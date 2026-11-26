@@ -1,6 +1,6 @@
 📸 BurstAudit — Auditoria de Rajadas & EXIF (BETA)
 O BurstAudit é uma ferramenta web gratuita e open-source criada para ajudar fotógrafos, editores e agências de eventos esportivos a identificar, auditar e isolar fotografias disparadas em rajada no mesmo segundo utilizando os metadados EXIF originais.
-> 🚀 [**Acesse a ferramenta online aqui (GitHub Pages)**](https://lucascaraffini-pixel.github.io/contador-fotografias-esportivas/)
+> 🚀 [**Acesse a ferramenta online aqui (GitHub Pages)**](https://lucascaraffini-pixel.github.io/contador-fotografias-esportivas)
 >
 > *(Não quer subir fotos agora? Clique em **"Carregar Demonstração"** no topo da página para testar com 2.500 fotos simuladas!)*
 ⚠️ Aviso de Versão BETA
