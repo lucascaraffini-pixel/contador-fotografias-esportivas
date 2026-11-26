@@ -1,0 +1,1829 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BurstAudit — Auditoria de Rajadas & EXIF</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+    /* Custom scrollbar suave */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.35);
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(148, 163, 184, 0.55);
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 min-h-screen transition-colors duration-200 antialiased selection:bg-indigo-500 selection:text-white">
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none px-4 sm:px-0"></div>
+
+  <!-- Modal Customizado (Confirmação / Progresso de Movimentação) -->
+  <div id="app-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4">
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4">
+      <div class="flex items-start gap-3">
+        <div id="modal-icon" class="shrink-0 w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <div class="flex-1 min-w-0">
+          <h3 id="modal-title" class="text-base font-bold text-slate-900 dark:text-white">Confirmação</h3>
+          <p id="modal-message" class="text-sm text-slate-600 dark:text-slate-400 mt-1 leading-relaxed"></p>
+        </div>
+      </div>
+      <div id="modal-progress-wrap" class="hidden space-y-2 pt-1">
+        <div class="flex justify-between text-xs font-medium text-slate-600 dark:text-slate-400">
+          <span id="modal-progress-label">Movendo arquivos...</span>
+          <span id="modal-progress-pct">0%</span>
+        </div>
+        <div class="w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+          <div id="modal-progress-bar" class="h-full bg-indigo-500 rounded-full transition-all duration-150" style="width: 0%"></div>
+        </div>
+      </div>
+      <div id="modal-actions" class="flex items-center justify-end gap-2 pt-2">
+        <button id="modal-cancel-btn" type="button" class="px-4 py-2 text-sm font-medium rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+          Cancelar
+        </button>
+        <button id="modal-confirm-btn" type="button" class="px-4 py-2 text-sm font-semibold rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white transition-colors">
+          Confirmar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <header class="sticky top-0 z-30 border-b border-slate-200/80 dark:border-slate-800/80 bg-white/85 dark:bg-slate-950/85 backdrop-blur-md">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-3">
+      <!-- Logo & Título -->
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20 text-white shrink-0">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+            <circle cx="12" cy="13" r="3" />
+          </svg>
+        </div>
+        <div>
+          <div class="flex flex-wrap items-center gap-2">
+            <h1 class="text-base sm:text-lg font-extrabold tracking-tight text-slate-900 dark:text-white">
+              BurstAudit <span class="hidden sm:inline font-medium text-slate-400 dark:text-slate-500">— Auditoria de Rajadas &amp; EXIF</span>
+            </h1>
+            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+              <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd" />
+              </svg>
+              100% Local &amp; Privado
+            </span>
+          </div>
+          <p class="text-xs text-slate-500 dark:text-slate-400 sm:hidden">Auditoria de Rajadas &amp; EXIF</p>
+        </div>
+      </div>
+
+      <!-- Ações do Header -->
+      <div class="flex items-center gap-2">
+        <button id="btn-demo" type="button" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 transition-colors">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Carregar Demonstração
+        </button>
+
+        <button id="btn-theme" type="button" aria-label="Alternar tema" title="Alternar tema Claro/Escuro" class="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors">
+          <!-- Sol (mostrado no dark) -->
+          <svg id="icon-sun" class="w-4 h-4 hidden dark:block" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+          </svg>
+          <!-- Lua (mostrada no light) -->
+          <svg id="icon-moon" class="w-4 h-4 block dark:hidden" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Conteúdo Principal -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+    <!-- Área de Upload (Drag & Drop) -->
+    <section aria-label="Importação de fotos">
+      <div id="dropzone" class="relative group rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-400 bg-white dark:bg-slate-900/60 p-6 sm:p-8 text-center transition-all duration-200 cursor-pointer">
+        <input id="input-folder" type="file" webkitdirectory directory multiple class="hidden" />
+        <input id="input-files" type="file" multiple accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="hidden" />
+
+        <div class="mx-auto w-14 h-14 rounded-2xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
+          <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+          </svg>
+        </div>
+        <h2 class="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
+          Arraste pastas ou fotografias aqui
+        </h2>
+        <p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-xl mx-auto">
+          Suporta <span class="font-medium text-slate-700 dark:text-slate-300">.JPG, .JPEG, .PNG e .WEBP</span>. Leitura ultrarrápida dos primeiros 128 KB (EXIF) em segundo plano — nenhum arquivo sai do seu computador.
+        </p>
+
+        <div class="mt-5 flex flex-wrap items-center justify-center gap-3">
+          <button id="btn-select-folder" type="button" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm shadow-indigo-500/20 transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+            </svg>
+            Selecionar Pasta Inteira
+          </button>
+          <button id="btn-select-files" type="button" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            Selecionar Arquivos
+          </button>
+          <button id="btn-clear-all" type="button" class="hidden inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 transition-colors">
+            Limpar Sessão
+          </button>
+        </div>
+      </div>
+
+      <!-- Barra de Progresso em Tempo Real -->
+      <div id="progress-panel" class="hidden mt-4 rounded-2xl border border-indigo-500/30 bg-indigo-50/60 dark:bg-indigo-950/30 p-4 sm:p-5">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+          <div class="flex items-center gap-2.5">
+            <svg class="w-5 h-5 text-indigo-600 dark:text-indigo-400 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            </svg>
+            <span id="progress-status" class="text-sm font-semibold text-slate-900 dark:text-white">Lendo metadados EXIF...</span>
+          </div>
+          <div class="flex items-center gap-3 text-xs font-medium text-slate-600 dark:text-slate-300">
+            <span id="progress-count">0 / 0</span>
+            <span class="text-slate-300 dark:text-slate-700">|</span>
+            <span id="progress-speed">0 fotos/s</span>
+            <span class="text-slate-300 dark:text-slate-700">|</span>
+            <span id="progress-pct" class="font-bold text-indigo-600 dark:text-indigo-400">0%</span>
+            <button id="btn-cancel-scan" type="button" class="ml-2 px-3 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-600 dark:text-rose-400 font-semibold transition-colors">
+              Cancelar
+            </button>
+          </div>
+        </div>
+        <div class="w-full h-2.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+          <div id="progress-bar" class="h-full bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full transition-all duration-150" style="width: 0%"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Barra de Configurações Reativas -->
+    <section aria-label="Regras de auditoria" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <!-- Limite Máximo -->
+      <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 p-4 flex items-center justify-between gap-4">
+        <div>
+          <label for="cfg-max-per-sec" class="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Limite Máximo
+          </label>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Fotos permitidas por segundo</p>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <input id="cfg-max-per-sec" type="number" min="1" max="500" value="10" class="w-20 px-3 py-2 text-center font-bold text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          <span class="text-xs font-medium text-slate-400">f/s</span>
+        </div>
+      </div>
+
+      <!-- Pontos por Excedente -->
+      <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 p-4 flex items-center justify-between gap-4">
+        <div>
+          <label for="cfg-points" class="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Penalidade
+          </label>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Pontos por foto excedente</p>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <input id="cfg-points" type="number" min="0" max="1000" step="0.5" value="1" class="w-20 px-3 py-2 text-center font-bold text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          <span class="text-xs font-medium text-slate-400">pts</span>
+        </div>
+      </div>
+
+      <!-- Toggle Agrupar por Câmera -->
+      <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 p-4 flex items-center justify-between gap-4">
+        <div>
+          <span class="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Agrupar por Câmera
+          </span>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Evita falsos positivos (EXIF Model)</p>
+        </div>
+        <label class="relative inline-flex items-center cursor-pointer shrink-0">
+          <input id="cfg-group-camera" type="checkbox" checked class="sr-only peer" />
+          <div class="w-11 h-6 bg-slate-300 dark:bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-500 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+        </label>
+      </div>
+    </section>
+
+    <!-- Estado Vazio Inicial -->
+    <section id="empty-state" class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 p-10 text-center">
+      <div class="mx-auto w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400 flex items-center justify-center mb-3">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+        </svg>
+      </div>
+      <h3 class="text-base font-bold text-slate-900 dark:text-white">Nenhuma fotografia carregada</h3>
+      <p class="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
+        Selecione uma pasta de evento acima ou clique em <strong class="text-indigo-600 dark:text-indigo-400">Carregar Demonstração</strong> para testar o painel com 2.500 fotos simuladas.
+      </p>
+    </section>
+
+    <!-- Dashboard Completo (oculto até haver dados) -->
+    <div id="dashboard-content" class="hidden space-y-6">
+
+      <!-- 4 Cartões de KPI -->
+      <section aria-label="Indicadores principais" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <!-- KPI 1: Total Analisado -->
+        <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-5 shadow-sm">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Total Analisado</span>
+            <span class="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </span>
+          </div>
+          <div id="kpi-total" class="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white mt-2">0</div>
+          <p id="kpi-total-sub" class="text-xs text-slate-500 dark:text-slate-400 mt-1">0 com EXIF • 0 fallback</p>
+        </div>
+
+        <!-- KPI 2: Taxa de Conformidade -->
+        <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-5 shadow-sm">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Conformidade</span>
+            <span class="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </span>
+          </div>
+          <div id="kpi-compliance" class="text-2xl sm:text-3xl font-extrabold text-emerald-600 dark:text-emerald-400 mt-2">100%</div>
+          <p id="kpi-compliance-sub" class="text-xs text-slate-500 dark:text-slate-400 mt-1">0 segundos críticos</p>
+        </div>
+
+        <!-- KPI 3: Pico Máximo -->
+        <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-5 shadow-sm">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Pico Máximo</span>
+            <span class="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            </span>
+          </div>
+          <div id="kpi-peak" class="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white mt-2">0 <span class="text-base font-semibold text-slate-400">f/s</span></div>
+          <p id="kpi-peak-sub" class="text-xs text-slate-500 dark:text-slate-400 mt-1 truncate" title="">—</p>
+        </div>
+
+        <!-- KPI 4: Excedentes & Pontuação -->
+        <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-5 shadow-sm">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Excedentes &amp; Pontos</span>
+            <span class="w-8 h-8 rounded-xl bg-rose-500/10 text-rose-500 flex items-center justify-center">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </span>
+          </div>
+          <div id="kpi-excess" class="text-2xl sm:text-3xl font-extrabold text-rose-600 dark:text-rose-400 mt-2">0</div>
+          <p id="kpi-excess-sub" class="text-xs text-slate-500 dark:text-slate-400 mt-1">0 pontos de penalidade</p>
+        </div>
+      </section>
+
+      <!-- Gráfico de Linha do Tempo (Canvas 2D) -->
+      <section aria-label="Gráfico de linha do tempo" class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-5 shadow-sm">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <div>
+            <h3 class="text-sm sm:text-base font-bold text-slate-900 dark:text-white">Linha do Tempo de Disparos (Fotos / Segundo)</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Passe o mouse ou toque nas barras para inspecionar cada segundo</p>
+          </div>
+          <div class="flex items-center gap-4 text-xs font-medium text-slate-600 dark:text-slate-400">
+            <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm bg-emerald-500"></span> Normal</span>
+            <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm bg-rose-500"></span> Crítico</span>
+            <span class="inline-flex items-center gap-1.5"><span class="w-4 border-t-2 border-dashed border-rose-500"></span> Limite</span>
+          </div>
+        </div>
+        <div id="chart-container" class="relative w-full h-60 sm:h-72 select-none">
+          <canvas id="timeline-canvas" class="block w-full h-full"></canvas>
+          <!-- Tooltip interativo -->
+          <div id="chart-tooltip" class="pointer-events-none hidden absolute z-20 px-3 py-2 rounded-xl bg-slate-900/95 dark:bg-slate-800/95 text-white text-xs shadow-xl border border-slate-700/80 whitespace-nowrap"></div>
+        </div>
+      </section>
+
+      <!-- Barra de Ações e Exportação -->
+      <section aria-label="Exportação e ações em lote" class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-5 shadow-sm">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div>
+            <h3 class="text-sm sm:text-base font-bold text-slate-900 dark:text-white">Ações &amp; Exportação de Excedentes</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Exporte relatórios de auditoria ou isole automaticamente os arquivos excedentes em <code class="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400">Revisao_Excedentes</code></p>
+          </div>
+          <span id="badge-excess-count" class="px-3 py-1 rounded-full text-xs font-bold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+            0 arquivos excedentes
+          </span>
+        </div>
+
+        <div class="flex flex-wrap gap-2.5">
+          <button id="btn-export-csv" type="button" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 transition-colors">
+            <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Exportar CSV
+          </button>
+
+          <button id="btn-export-json" type="button" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 transition-colors">
+            <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+            </svg>
+            Exportar JSON
+          </button>
+
+          <button id="btn-export-bat" type="button" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 transition-colors">
+            <svg class="w-4 h-4 text-sky-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            Baixar Script Windows (.bat)
+          </button>
+
+          <button id="btn-export-sh" type="button" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 transition-colors">
+            <svg class="w-4 h-4 text-violet-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            Baixar Script Mac/Linux (.sh)
+          </button>
+
+          <button id="btn-move-direct" type="button" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm shadow-indigo-500/20 transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+            </svg>
+            Mover Diretamente (API Navegador)
+          </button>
+        </div>
+      </section>
+
+      <!-- Tabela Interativa & Filtros -->
+      <section aria-label="Tabela de auditoria por segundo" class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 shadow-sm overflow-hidden">
+        <!-- Barra de Filtros -->
+        <div class="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <h3 class="text-sm sm:text-base font-bold text-slate-900 dark:text-white">Detalhamento por Segundo</h3>
+            <span id="table-summary" class="text-xs font-medium text-slate-500 dark:text-slate-400">Mostrando 0 grupos</span>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <!-- Busca -->
+            <div class="relative">
+              <svg class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input id="filter-search" type="text" placeholder="Buscar arquivo, data ou câmera..." class="w-full pl-9 pr-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+
+            <!-- Filtro de Câmera -->
+            <select id="filter-camera" class="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <option value="ALL">Todas as Câmeras</option>
+            </select>
+
+            <!-- Ordenação -->
+            <select id="filter-sort" class="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <option value="critical">Ordenar: Mais críticos primeiro</option>
+              <option value="count">Ordenar: Mais fotos/s</option>
+              <option value="chrono">Ordenar: Cronológica</option>
+            </select>
+
+            <!-- Toggle Apenas Críticos -->
+            <label class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 cursor-pointer">
+              <span class="text-xs font-medium text-slate-700 dark:text-slate-300">Apenas críticos</span>
+              <input id="filter-only-critical" type="checkbox" checked class="w-4 h-4 rounded accent-indigo-600 cursor-pointer" />
+            </label>
+          </div>
+        </div>
+
+        <!-- Tabela Responsiva -->
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/60 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                <th class="py-3 px-4">Data / Hora</th>
+                <th class="py-3 px-4">Câmera</th>
+                <th class="py-3 px-4 text-center">Fotos no Segundo</th>
+                <th class="py-3 px-4 text-center">Excedentes</th>
+                <th class="py-3 px-4 text-center">Pontuação</th>
+                <th class="py-3 px-4 text-right">Ação</th>
+              </tr>
+            </thead>
+            <tbody id="audit-table-body" class="divide-y divide-slate-200 dark:divide-slate-800 text-sm"></tbody>
+          </table>
+        </div>
+
+        <!-- Paginação -->
+        <div id="pagination-bar" class="p-4 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600 dark:text-slate-400">
+          <span id="pagination-info">Página 1 de 1</span>
+          <div class="flex items-center gap-2">
+            <button id="btn-prev-page" type="button" class="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+              Anterior
+            </button>
+            <button id="btn-next-page" type="button" class="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+              Próxima
+            </button>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <footer class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 text-center text-xs text-slate-500 dark:text-slate-500">
+    BurstAudit — Processamento EXIF 100% local no navegador via Web Workers &amp; Leitura Parcial (128 KB). Pronto para GitHub Pages.
+  </footer>
+
+  <!-- ===================================================================== -->
+  <!-- APLICAÇÃO JAVASCRIPT (MOTOR EXIF + WORKER + DASHBOARD + EXPORTAÇÃO)   -->
+  <!-- ===================================================================== -->
+  <script>
+    (() => {
+      'use strict';
+
+      // ---------------------------------------------------------------------
+      // 1. ESTADO GLOBAL DA APLICAÇÃO
+      // ---------------------------------------------------------------------
+      const state = {
+        rawPhotos: [],          // Lista de metadados extraídos { id, name, relativePath, size, timestamp, subSec, camera, exifFallback, fileRef }
+        fileMap: new Map(),     // id -> File (mantido apenas para arquivos reais do disco)
+        objectUrls: new Map(),  // id -> blob URL (miniaturas sob demanda)
+        groups: [],             // Grupos calculados por segundo (+ câmera opcional)
+        filteredGroups: [],     // Grupos filtrados para a tabela
+        expandedKeys: new Set(),// Chaves de grupos expandidos na tabela
+        loadedThumbs: new Set(),// Chaves de grupos que já carregaram miniaturas
+        isDemo: false,
+        worker: null,
+        isScanning: false,
+        page: 1,
+        pageSize: 25,
+        config: {
+          maxPerSec: 10,
+          pointsPerExcess: 1,
+          groupByCamera: true,
+        },
+        filters: {
+          search: '',
+          camera: 'ALL',
+          sort: 'critical',
+          onlyCritical: true,
+        },
+        chartBars: [],          // Geometria das barras renderizadas para tooltip
+      };
+
+      // ---------------------------------------------------------------------
+      // 2. REFERÊNCIAS DO DOM
+      // ---------------------------------------------------------------------
+      const el = {
+        dropzone: document.getElementById('dropzone'),
+        inputFolder: document.getElementById('input-folder'),
+        inputFiles: document.getElementById('input-files'),
+        btnSelectFolder: document.getElementById('btn-select-folder'),
+        btnSelectFiles: document.getElementById('btn-select-files'),
+        btnClearAll: document.getElementById('btn-clear-all'),
+        btnDemo: document.getElementById('btn-demo'),
+        btnTheme: document.getElementById('btn-theme'),
+
+        progressPanel: document.getElementById('progress-panel'),
+        progressStatus: document.getElementById('progress-status'),
+        progressCount: document.getElementById('progress-count'),
+        progressSpeed: document.getElementById('progress-speed'),
+        progressPct: document.getElementById('progress-pct'),
+        progressBar: document.getElementById('progress-bar'),
+        btnCancelScan: document.getElementById('btn-cancel-scan'),
+
+        cfgMaxPerSec: document.getElementById('cfg-max-per-sec'),
+        cfgPoints: document.getElementById('cfg-points'),
+        cfgGroupCamera: document.getElementById('cfg-group-camera'),
+
+        emptyState: document.getElementById('empty-state'),
+        dashboardContent: document.getElementById('dashboard-content'),
+
+        kpiTotal: document.getElementById('kpi-total'),
+        kpiTotalSub: document.getElementById('kpi-total-sub'),
+        kpiCompliance: document.getElementById('kpi-compliance'),
+        kpiComplianceSub: document.getElementById('kpi-compliance-sub'),
+        kpiPeak: document.getElementById('kpi-peak'),
+        kpiPeakSub: document.getElementById('kpi-peak-sub'),
+        kpiExcess: document.getElementById('kpi-excess'),
+        kpiExcessSub: document.getElementById('kpi-excess-sub'),
+
+        chartContainer: document.getElementById('chart-container'),
+        timelineCanvas: document.getElementById('timeline-canvas'),
+        chartTooltip: document.getElementById('chart-tooltip'),
+
+        badgeExcessCount: document.getElementById('badge-excess-count'),
+        btnExportCsv: document.getElementById('btn-export-csv'),
+        btnExportJson: document.getElementById('btn-export-json'),
+        btnExportBat: document.getElementById('btn-export-bat'),
+        btnExportSh: document.getElementById('btn-export-sh'),
+        btnMoveDirect: document.getElementById('btn-move-direct'),
+
+        tableSummary: document.getElementById('table-summary'),
+        filterSearch: document.getElementById('filter-search'),
+        filterCamera: document.getElementById('filter-camera'),
+        filterSort: document.getElementById('filter-sort'),
+        filterOnlyCritical: document.getElementById('filter-only-critical'),
+        tableBody: document.getElementById('audit-table-body'),
+        paginationInfo: document.getElementById('pagination-info'),
+        btnPrevPage: document.getElementById('btn-prev-page'),
+        btnNextPage: document.getElementById('btn-next-page'),
+
+        toastContainer: document.getElementById('toast-container'),
+        modal: document.getElementById('app-modal'),
+        modalTitle: document.getElementById('modal-title'),
+        modalMessage: document.getElementById('modal-message'),
+        modalProgressWrap: document.getElementById('modal-progress-wrap'),
+        modalProgressLabel: document.getElementById('modal-progress-label'),
+        modalProgressPct: document.getElementById('modal-progress-pct'),
+        modalProgressBar: document.getElementById('modal-progress-bar'),
+        modalActions: document.getElementById('modal-actions'),
+        modalCancelBtn: document.getElementById('modal-cancel-btn'),
+        modalConfirmBtn: document.getElementById('modal-confirm-btn'),
+      };
+
+      // ---------------------------------------------------------------------
+      // 3. UTILITÁRIOS DE INTERFACE (TOAST, MODAL, TEMA, FORMATAÇÃO)
+      // ---------------------------------------------------------------------
+      function showToast(message, type = 'info') {
+        const colors = {
+          info: 'bg-slate-900 dark:bg-slate-800 text-white border-slate-700',
+          success: 'bg-emerald-600 text-white border-emerald-500',
+          warning: 'bg-amber-600 text-white border-amber-500',
+          error: 'bg-rose-600 text-white border-rose-500',
+        };
+        const toast = document.createElement('div');
+        toast.className = `pointer-events-auto px-4 py-3 rounded-xl border shadow-xl text-xs sm:text-sm font-medium flex items-center justify-between gap-3 transition-all duration-300 translate-y-2 opacity-0 ${colors[type] || colors.info}`;
+        toast.innerHTML = `<span>${escapeHtml(message)}</span>`;
+        el.toastContainer.appendChild(toast);
+
+        requestAnimationFrame(() => {
+          toast.classList.remove('translate-y-2', 'opacity-0');
+        });
+        setTimeout(() => {
+          toast.classList.add('opacity-0', 'translate-y-2');
+          setTimeout(() => toast.remove(), 300);
+        }, 4000);
+      }
+
+      function escapeHtml(str) {
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function formatNumber(n) {
+        return new Intl.NumberFormat('pt-BR').format(n);
+      }
+
+      function formatDateFromMs(ms) {
+        const d = new Date(ms);
+        const pad = (v) => String(v).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+      }
+
+      function openConfirmModal(title, message, confirmLabel = 'Confirmar') {
+        return new Promise((resolve) => {
+          el.modalTitle.textContent = title;
+          el.modalMessage.textContent = message;
+          el.modalConfirmBtn.textContent = confirmLabel;
+          el.modalProgressWrap.classList.add('hidden');
+          el.modalActions.classList.remove('hidden');
+          el.modal.classList.remove('hidden');
+          el.modal.classList.add('flex');
+
+          const cleanup = (result) => {
+            el.modal.classList.add('hidden');
+            el.modal.classList.remove('flex');
+            el.modalCancelBtn.onclick = null;
+            el.modalConfirmBtn.onclick = null;
+            resolve(result);
+          };
+          el.modalCancelBtn.onclick = () => cleanup(false);
+          el.modalConfirmBtn.onclick = () => cleanup(true);
+        });
+      }
+
+      function initTheme() {
+        const saved = localStorage.getItem('burstaudit-theme');
+        if (saved === 'light') {
+          document.documentElement.classList.remove('dark');
+        } else {
+          document.documentElement.classList.add('dark');
+        }
+        el.btnTheme.addEventListener('click', () => {
+          const isDark = document.documentElement.classList.toggle('dark');
+          localStorage.setItem('burstaudit-theme', isDark ? 'dark' : 'light');
+          if (state.groups.length > 0) drawTimelineChart();
+        });
+      }
+
+      function revokeAllObjectUrls() {
+        for (const url of state.objectUrls.values()) {
+          URL.revokeObjectURL(url);
+        }
+        state.objectUrls.clear();
+        state.loadedThumbs.clear();
+      }
+
+      // ---------------------------------------------------------------------
+      // 4. WEB WORKER NATIVO PARA PARSER EXIF (LEITURA PARCIAL DE 128 KB)
+      // ---------------------------------------------------------------------
+      const workerSource = `
+        'use strict';
+
+        function readAscii(view, offset, length) {
+          let out = '';
+          const end = Math.min(offset + length, view.byteLength);
+          for (let i = offset; i < end; i++) {
+            const c = view.getUint8(i);
+            if (c === 0) break;
+            if (c >= 32 && c <= 126) out += String.fromCharCode(c);
+          }
+          return out.trim();
+        }
+
+        function parseExifDate(str) {
+          // Formato EXIF padrão: "YYYY:MM:DD HH:MM:SS"
+          if (!str || str.length < 19) return null;
+          const m = str.match(/^(\\d{4})[:\\-](\\d{2})[:\\-](\\d{2})\\s+(\\d{2}):(\\d{2}):(\\d{2})/);
+          if (!m) return null;
+          return m[1] + '-' + m[2] + '-' + m[3] + ' ' + m[4] + ':' + m[5] + ':' + m[6];
+        }
+
+        function readIfdTags(view, tiffStart, ifdOffset, littleEndian) {
+          const tags = {};
+          const dirStart = tiffStart + ifdOffset;
+          if (dirStart + 2 > view.byteLength) return tags;
+
+          const entries = view.getUint16(dirStart, littleEndian);
+          for (let i = 0; i < entries; i++) {
+            const entryOffset = dirStart + 2 + i * 12;
+            if (entryOffset + 12 > view.byteLength) break;
+
+            const tag = view.getUint16(entryOffset, littleEndian);
+            const type = view.getUint16(entryOffset + 2, littleEndian);
+            const count = view.getUint32(entryOffset + 4, littleEndian);
+
+            // Tags de interesse:
+            // 0x010F Make, 0x0110 Model, 0x0132 DateTime, 0x8769 ExifIFDPointer
+            // 0x9003 DateTimeOriginal, 0x9004 DateTimeDigitized, 0x9291 SubSecTimeOriginal
+            if (tag === 0x8769) {
+              tags[tag] = view.getUint32(entryOffset + 8, littleEndian);
+            } else if (
+              type === 2 &&
+              (tag === 0x010F || tag === 0x0110 || tag === 0x0132 ||
+               tag === 0x9003 || tag === 0x9004 || tag === 0x9291)
+            ) {
+              if (count <= 4) {
+                tags[tag] = readAscii(view, entryOffset + 8, count);
+              } else {
+                const valOffset = tiffStart + view.getUint32(entryOffset + 8, littleEndian);
+                if (valOffset < view.byteLength) {
+                  tags[tag] = readAscii(view, valOffset, count);
+                }
+              }
+            }
+          }
+          return tags;
+        }
+
+        function extractExifFromBuffer(buffer) {
+          const view = new DataView(buffer);
+          if (view.byteLength < 12) return null;
+
+          // Verifica assinatura JPEG (0xFFD8)
+          if (view.getUint16(0, false) !== 0xFFD8) return null;
+
+          let offset = 2;
+          while (offset + 4 < view.byteLength) {
+            if (view.getUint8(offset) !== 0xFF) break;
+            const marker = view.getUint8(offset + 1);
+
+            // SOS (Start of Scan) ou EOI — fim dos metadados
+            if (marker === 0xDA || marker === 0xD9) break;
+
+            const segLength = view.getUint16(offset + 2, false);
+            if (segLength < 2) break;
+
+            // APP1 (0xE1) onde reside o bloco EXIF
+            if (marker === 0xE1 && offset + 10 < view.byteLength) {
+              const header = readAscii(view, offset + 4, 4);
+              if (header === 'Exif') {
+                const tiffStart = offset + 10;
+                if (tiffStart + 8 > view.byteLength) return null;
+
+                const byteOrder = view.getUint16(tiffStart, false);
+                const littleEndian = byteOrder === 0x4949; // 'II'
+                if (!littleEndian && byteOrder !== 0x4D4D) return null;
+
+                const firstIfdOffset = view.getUint32(tiffStart + 4, littleEndian);
+                const ifd0 = readIfdTags(view, tiffStart, firstIfdOffset, littleEndian);
+
+                let exifIfd = {};
+                if (ifd0[0x8769]) {
+                  exifIfd = readIfdTags(view, tiffStart, ifd0[0x8769], littleEndian);
+                }
+
+                const rawDate = exifIfd[0x9003] || exifIfd[0x9004] || ifd0[0x0132] || null;
+                const parsedDate = parseExifDate(rawDate);
+                const subSec = exifIfd[0x9291] || '';
+                const make = ifd0[0x010F] || '';
+                const model = ifd0[0x0110] || '';
+
+                let camera = '';
+                if (model) {
+                  camera = make && !model.toLowerCase().startsWith(make.toLowerCase())
+                    ? (make + ' ' + model)
+                    : model;
+                } else if (make) {
+                  camera = make;
+                }
+
+                return {
+                  timestamp: parsedDate,
+                  subSec: subSec,
+                  camera: camera || 'Câmera Desconhecida',
+                };
+              }
+            }
+            offset += 2 + segLength;
+          }
+          return null;
+        }
+
+        function formatFallbackDate(ms) {
+          const d = new Date(ms);
+          const p = (v) => String(v).padStart(2, '0');
+          return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' +
+                 p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+        }
+
+        self.onmessage = async function (e) {
+          const { files } = e.data;
+          const total = files.length;
+          const results = new Array(total);
+          const CHUNK_REPORT = 40;
+          const SLICE_BYTES = 131072; // 128 KB
+
+          for (let i = 0; i < total; i++) {
+            const item = files[i];
+            const file = item.file;
+            let exif = null;
+
+            try {
+              const slice = file.slice(0, SLICE_BYTES);
+              const buffer = await slice.arrayBuffer();
+              exif = extractExifFromBuffer(buffer);
+            } catch (_) {
+              exif = null;
+            }
+
+            const hasExifDate = !!(exif && exif.timestamp);
+            results[i] = {
+              id: item.id,
+              name: file.name,
+              relativePath: item.relativePath || file.name,
+              size: file.size,
+              timestamp: hasExifDate ? exif.timestamp : formatFallbackDate(file.lastModified),
+              subSec: (exif && exif.subSec) ? exif.subSec : '',
+              camera: (exif && exif.camera) ? exif.camera : 'Sem EXIF',
+              exifFallback: !hasExifDate,
+            };
+
+            if ((i + 1) % CHUNK_REPORT === 0 || i + 1 === total) {
+              self.postMessage({ type: 'progress', processed: i + 1, total });
+            }
+          }
+
+          self.postMessage({ type: 'done', results });
+        };
+      `;
+
+      function createExifWorker() {
+        const blob = new Blob([workerSource], { type: 'application/javascript' });
+        const url = URL.createObjectURL(blob);
+        const worker = new Worker(url);
+        worker._blobUrl = url;
+        return worker;
+      }
+
+      // ---------------------------------------------------------------------
+      // 5. INGESTÃO DE ARQUIVOS (DRAG & DROP RECURSIVO + INPUTS)
+      // ---------------------------------------------------------------------
+      const VALID_EXT = /\.(jpe?g|png|webp)$/i;
+
+      async function collectFilesFromDataTransfer(dataTransfer) {
+        const collected = [];
+        const items = Array.from(dataTransfer.items || []);
+
+        async function traverseEntry(entry, pathPrefix = '') {
+          if (!entry) return;
+          if (entry.isFile) {
+            await new Promise((resolve) => {
+              entry.file((file) => {
+                if (VALID_EXT.test(file.name)) {
+                  collected.push({
+                    file,
+                    relativePath: pathPrefix ? `${pathPrefix}/${file.name}` : file.name,
+                  });
+                }
+                resolve();
+              }, () => resolve());
+            });
+          } else if (entry.isDirectory) {
+            const reader = entry.createReader();
+            const readBatch = () => new Promise((resolve) => {
+              reader.readEntries(async (entries) => {
+                if (!entries || entries.length === 0) return resolve();
+                for (const child of entries) {
+                  await traverseEntry(child, pathPrefix ? `${pathPrefix}/${entry.name}` : entry.name);
+                }
+                await readBatch();
+                resolve();
+              }, () => resolve());
+            });
+            await readBatch();
+          }
+        }
+
+        if (items.length > 0 && typeof items[0].webkitGetAsEntry === 'function') {
+          for (const item of items) {
+            const entry = item.webkitGetAsEntry();
+            if (entry) await traverseEntry(entry);
+          }
+        } else {
+          for (const file of Array.from(dataTransfer.files || [])) {
+            if (VALID_EXT.test(file.name)) {
+              collected.push({ file, relativePath: file.webkitRelativePath || file.name });
+            }
+          }
+        }
+        return collected;
+      }
+
+      function startScan(fileEntries) {
+        if (!fileEntries || fileEntries.length === 0) {
+          showToast('Nenhuma imagem válida (.jpg, .jpeg, .png, .webp) encontrada.', 'warning');
+          return;
+        }
+
+        if (state.worker) {
+          state.worker.terminate();
+          URL.revokeObjectURL(state.worker._blobUrl);
+        }
+
+        revokeAllObjectUrls();
+        state.fileMap.clear();
+        state.expandedKeys.clear();
+        state.isDemo = false;
+        state.isScanning = true;
+
+        const payload = fileEntries.map((entry, idx) => {
+          const id = `f_${idx}`;
+          state.fileMap.set(id, entry.file);
+          return {
+            id,
+            file: entry.file,
+            relativePath: entry.relativePath || entry.file.webkitRelativePath || entry.file.name,
+          };
+        });
+
+        const total = payload.length;
+        const startTime = performance.now();
+
+        el.progressPanel.classList.remove('hidden');
+        el.progressStatus.textContent = 'Extraindo metadados EXIF (128 KB/foto)...';
+        el.progressCount.textContent = `0 / ${formatNumber(total)}`;
+        el.progressSpeed.textContent = '0 fotos/s';
+        el.progressPct.textContent = '0%';
+        el.progressBar.style.width = '0%';
+
+        const worker = createExifWorker();
+        state.worker = worker;
+
+        worker.onmessage = (e) => {
+          const msg = e.data;
+          if (msg.type === 'progress') {
+            const elapsedSec = Math.max((performance.now() - startTime) / 1000, 0.05);
+            const speed = Math.round(msg.processed / elapsedSec);
+            const pct = Math.round((msg.processed / msg.total) * 100);
+            el.progressCount.textContent = `${formatNumber(msg.processed)} / ${formatNumber(msg.total)}`;
+            el.progressSpeed.textContent = `${formatNumber(speed)} fotos/s`;
+            el.progressPct.textContent = `${pct}%`;
+            el.progressBar.style.width = `${pct}%`;
+          } else if (msg.type === 'done') {
+            state.isScanning = false;
+            worker.terminate();
+            URL.revokeObjectURL(worker._blobUrl);
+            state.worker = null;
+
+            el.progressPanel.classList.add('hidden');
+            state.rawPhotos = msg.results;
+            el.btnClearAll.classList.remove('hidden');
+            populateCameraFilter();
+            recalculateAudit();
+            showToast(`${formatNumber(msg.results.length)} fotografias auditadas com sucesso!`, 'success');
+          }
+        };
+
+        worker.onerror = () => {
+          state.isScanning = false;
+          el.progressPanel.classList.add('hidden');
+          showToast('Erro ao processar arquivos no Web Worker.', 'error');
+        };
+
+        worker.postMessage({ files: payload });
+      }
+
+      // ---------------------------------------------------------------------
+      // 6. GERADOR DE DEMONSTRAÇÃO (2.500 FOTOS SIMULADAS)
+      // ---------------------------------------------------------------------
+      function loadDemoData() {
+        if (state.isScanning) return;
+        revokeAllObjectUrls();
+        state.fileMap.clear();
+        state.expandedKeys.clear();
+        state.isDemo = true;
+
+        const cameras = ['Canon EOS R6 Mark II', 'Sony ILCE-7M4', 'Nikon Z8'];
+        const baseTime = new Date(2026, 10, 25, 19, 30, 0).getTime();
+        const photos = [];
+        let photoIndex = 1;
+
+        // Gera ~2.500 fotos ao longo de ~420 segundos, com rajadas críticas realistas
+        let currentSecOffset = 0;
+        while (photos.length < 2500) {
+          currentSecOffset += Math.random() < 0.35 ? 0 : Math.floor(Math.random() * 4) + 1;
+          const cam = cameras[Math.floor(Math.random() * cameras.length)];
+          const isBurst = Math.random() < 0.14;
+          const countInBurst = isBurst
+            ? Math.floor(Math.random() * 14) + 11 // 11 a 24 fotos/s
+            : Math.floor(Math.random() * 8) + 1;  // 1 a 8 fotos/s
+
+          const ts = formatDateFromMs(baseTime + currentSecOffset * 1000);
+          for (let j = 0; j < countInBurst && photos.length < 2500; j++) {
+            const sub = String(Math.floor((j / countInBurst) * 99)).padStart(2, '0');
+            const isFallback = Math.random() < 0.02;
+            const prefix = cam.startsWith('Canon') ? 'IMG' : cam.startsWith('Sony') ? 'DSC' : 'NZ8';
+            const fileName = `${prefix}_${String(photoIndex).padStart(4, '0')}.JPG`;
+            photos.push({
+              id: `demo_${photoIndex}`,
+              name: fileName,
+              relativePath: `Evento_Demo/${fileName}`,
+              size: 4200000 + Math.floor(Math.random() * 1800000),
+              timestamp: ts,
+              subSec: isFallback ? '' : sub,
+              camera: isFallback ? 'Sem EXIF' : cam,
+              exifFallback: isFallback,
+            });
+            photoIndex++;
+          }
+        }
+
+        state.rawPhotos = photos;
+        el.btnClearAll.classList.remove('hidden');
+        populateCameraFilter();
+        recalculateAudit();
+        showToast('Demonstração carregada: 2.500 fotos simuladas de 3 câmeras.', 'info');
+      }
+
+      // ---------------------------------------------------------------------
+      // 7. MOTOR DE AUDITORIA E RECÁLCULO INSTANTÂNEO
+      // ---------------------------------------------------------------------
+      function populateCameraFilter() {
+        const cams = new Set(state.rawPhotos.map((p) => p.camera));
+        const sorted = Array.from(cams).sort();
+        el.filterCamera.innerHTML = '<option value="ALL">Todas as Câmeras</option>';
+        for (const c of sorted) {
+          const opt = document.createElement('option');
+          opt.value = c;
+          opt.textContent = c;
+          el.filterCamera.appendChild(opt);
+        }
+        state.filters.camera = 'ALL';
+      }
+
+      function recalculateAudit() {
+        if (state.rawPhotos.length === 0) {
+          el.emptyState.classList.remove('hidden');
+          el.dashboardContent.classList.add('hidden');
+          return;
+        }
+
+        el.emptyState.classList.add('hidden');
+        el.dashboardContent.classList.remove('hidden');
+
+        const maxPerSec = Math.max(1, parseInt(el.cfgMaxPerSec.value, 10) || 10);
+        const pointsPerExcess = Math.max(0, parseFloat(el.cfgPoints.value) || 0);
+        const groupByCamera = el.cfgGroupCamera.checked;
+
+        state.config = { maxPerSec, pointsPerExcess, groupByCamera };
+
+        // Agrupamento
+        const map = new Map();
+        for (const photo of state.rawPhotos) {
+          const key = groupByCamera ? `${photo.timestamp}||${photo.camera}` : photo.timestamp;
+          let g = map.get(key);
+          if (!g) {
+            g = {
+              key,
+              timestamp: photo.timestamp,
+              camera: groupByCamera ? photo.camera : 'Todas (Agrupado)',
+              photos: [],
+            };
+            map.set(key, g);
+          }
+          g.photos.push(photo);
+        }
+
+        // Ordena fotos dentro de cada grupo por subSec e nome
+        const groups = [];
+        let totalExcess = 0;
+        let totalPoints = 0;
+        let criticalGroups = 0;
+        let peakGroup = null;
+
+        for (const g of map.values()) {
+          g.photos.sort((a, b) => {
+            const subCmp = (a.subSec || '').localeCompare(b.subSec || '');
+            if (subCmp !== 0) return subCmp;
+            return a.name.localeCompare(b.name, undefined, { numeric: true });
+          });
+
+          g.count = g.photos.length;
+          g.excess = Math.max(0, g.count - maxPerSec);
+          g.points = Number((g.excess * pointsPerExcess).toFixed(2));
+          g.isCritical = g.excess > 0;
+
+          if (g.isCritical) {
+            criticalGroups++;
+            totalExcess += g.excess;
+            totalPoints += g.points;
+          }
+          if (!peakGroup || g.count > peakGroup.count) {
+            peakGroup = g;
+          }
+          groups.push(g);
+        }
+
+        // Ordenação cronológica base para o gráfico
+        groups.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+        state.groups = groups;
+
+        // Atualiza KPIs
+        const totalPhotos = state.rawPhotos.length;
+        const fallbackCount = state.rawPhotos.filter((p) => p.exifFallback).length;
+        const exifCount = totalPhotos - fallbackCount;
+        const compliancePct = totalPhotos > 0
+          ? (((totalPhotos - totalExcess) / totalPhotos) * 100).toFixed(1)
+          : '100.0';
+
+        el.kpiTotal.textContent = formatNumber(totalPhotos);
+        el.kpiTotalSub.textContent = `${formatNumber(exifCount)} com EXIF • ${formatNumber(fallbackCount)} fallback`;
+
+        el.kpiCompliance.textContent = `${compliancePct}%`;
+        el.kpiComplianceSub.textContent = `${formatNumber(criticalGroups)} ${criticalGroups === 1 ? 'segundo crítico' : 'segundos críticos'}`;
+
+        if (peakGroup) {
+          el.kpiPeak.innerHTML = `${formatNumber(peakGroup.count)} <span class="text-base font-semibold text-slate-400">f/s</span>`;
+          const peakText = `${peakGroup.timestamp} • ${peakGroup.camera}`;
+          el.kpiPeakSub.textContent = peakText;
+          el.kpiPeakSub.title = peakText;
+        }
+
+        el.kpiExcess.textContent = formatNumber(totalExcess);
+        el.kpiExcessSub.textContent = `${formatNumber(Number(totalPoints.toFixed(2)))} pontos de penalidade`;
+        el.badgeExcessCount.textContent = `${formatNumber(totalExcess)} ${totalExcess === 1 ? 'arquivo excedente' : 'arquivos excedentes'}`;
+
+        state.page = 1;
+        applyTableFilters();
+        drawTimelineChart();
+      }
+
+      // ---------------------------------------------------------------------
+      // 8. GRÁFICO DE LINHA DO TEMPO (CANVAS 2D NATIVO + TOOLTIP)
+      // ---------------------------------------------------------------------
+      function drawTimelineChart() {
+        const canvas = el.timelineCanvas;
+        const container = el.chartContainer;
+        if (!canvas || !container || state.groups.length === 0) return;
+
+        const dpr = window.devicePixelRatio || 1;
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+        if (width === 0 || height === 0) return;
+
+        canvas.width = Math.floor(width * dpr);
+        canvas.height = Math.floor(height * dpr);
+        const ctx = canvas.getContext('2d');
+        ctx.scale(dpr, dpr);
+
+        const isDark = document.documentElement.classList.contains('dark');
+        const pad = { top: 18, right: 16, bottom: 28, left: 38 };
+        const plotW = width - pad.left - pad.right;
+        const plotH = height - pad.top - pad.bottom;
+
+        ctx.clearRect(0, 0, width, height);
+
+        // Downsampling inteligente se houver mais grupos do que pixels disponíveis
+        const maxBars = Math.max(20, Math.floor(plotW / 5));
+        let displayData = state.groups;
+        if (state.groups.length > maxBars) {
+          const step = state.groups.length / maxBars;
+          displayData = [];
+          for (let i = 0; i < maxBars; i++) {
+            const start = Math.floor(i * step);
+            const end = Math.min(state.groups.length, Math.floor((i + 1) * step));
+            // Preserva o grupo de maior pico dentro do bucket
+            let best = state.groups[start];
+            for (let j = start + 1; j < end; j++) {
+              if (state.groups[j].count > best.count) best = state.groups[j];
+            }
+            displayData.push(best);
+          }
+        }
+
+        const maxVal = Math.max(
+          state.config.maxPerSec + 2,
+          ...displayData.map((g) => g.count)
+        );
+
+        // Grade horizontal
+        ctx.strokeStyle = isDark ? 'rgba(148, 163, 184, 0.12)' : 'rgba(15, 23, 42, 0.08)';
+        ctx.fillStyle = isDark ? '#94a3b8' : '#64748b';
+        ctx.font = '11px Inter, sans-serif';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+
+        const gridSteps = 4;
+        for (let i = 0; i <= gridSteps; i++) {
+          const val = Math.round((maxVal / gridSteps) * i);
+          const y = pad.top + plotH - (val / maxVal) * plotH;
+          ctx.beginPath();
+          ctx.moveTo(pad.left, y);
+          ctx.lineTo(width - pad.right, y);
+          ctx.stroke();
+          ctx.fillText(String(val), pad.left - 8, y);
+        }
+
+        // Barras
+        const barSlot = plotW / displayData.length;
+        const barW = Math.max(2, Math.min(18, barSlot * 0.72));
+        state.chartBars = [];
+
+        for (let i = 0; i < displayData.length; i++) {
+          const g = displayData[i];
+          const barH = (g.count / maxVal) * plotH;
+          const x = pad.left + i * barSlot + (barSlot - barW) / 2;
+          const y = pad.top + plotH - barH;
+
+          ctx.fillStyle = g.isCritical ? '#f43f5e' : '#10b981';
+          ctx.beginPath();
+          const r = Math.min(3, barW / 2, barH / 2);
+          ctx.roundRect(x, y, barW, barH, [r, r, 0, 0]);
+          ctx.fill();
+
+          state.chartBars.push({ x, y, w: Math.max(barSlot, barW), h: plotH, group: g });
+        }
+
+        // Linha tracejada do limite
+        const limitY = pad.top + plotH - (state.config.maxPerSec / maxVal) * plotH;
+        ctx.save();
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        ctx.moveTo(pad.left, limitY);
+        ctx.lineTo(width - pad.right, limitY);
+        ctx.stroke();
+        ctx.restore();
+
+        // Rótulos do eixo X (início, meio, fim)
+        ctx.fillStyle = isDark ? '#94a3b8' : '#64748b';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        const labelIndices = [0, Math.floor(displayData.length / 2), displayData.length - 1];
+        const used = new Set();
+        for (const idx of labelIndices) {
+          if (idx >= 0 && idx < displayData.length && !used.has(idx)) {
+            used.add(idx);
+            const x = pad.left + idx * barSlot + barSlot / 2;
+            const timeOnly = displayData[idx].timestamp.split(' ')[1] || displayData[idx].timestamp;
+            ctx.fillText(timeOnly, Math.max(pad.left + 25, Math.min(width - pad.right - 25, x)), pad.top + plotH + 8);
+          }
+        }
+      }
+
+      function handleChartPointer(clientX, clientY) {
+        const rect = el.timelineCanvas.getBoundingClientRect();
+        const x = clientX - rect.left;
+        const y = clientY - rect.top;
+
+        const hit = state.chartBars.find((b) => x >= b.x - 2 && x <= b.x + b.w + 2);
+        if (!hit) {
+          el.chartTooltip.classList.add('hidden');
+          return;
+        }
+
+        const g = hit.group;
+        el.chartTooltip.innerHTML = `
+          <div class="font-bold text-white">${escapeHtml(g.timestamp)}</div>
+          <div class="text-slate-300 text-[11px]">${escapeHtml(g.camera)}</div>
+          <div class="mt-1 flex items-center gap-2">
+            <span class="font-semibold ${g.isCritical ? 'text-rose-400' : 'text-emerald-400'}">${g.count} fotos/s</span>
+            ${g.excess > 0 ? `<span class="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 text-[10px] font-bold">+${g.excess} exced.</span>` : ''}
+          </div>
+        `;
+        el.chartTooltip.classList.remove('hidden');
+
+        const tipW = el.chartTooltip.offsetWidth;
+        const left = Math.min(rect.width - tipW - 8, Math.max(8, x + 12));
+        const top = Math.max(8, y - 56);
+        el.chartTooltip.style.left = `${left}px`;
+        el.chartTooltip.style.top = `${top}px`;
+      }
+
+      // ---------------------------------------------------------------------
+      // 9. TABELA INTERATIVA, FILTROS, ACORDEÃO E MINIATURAS SOB DEMANDA
+      // ---------------------------------------------------------------------
+      function applyTableFilters() {
+        const search = el.filterSearch.value.trim().toLowerCase();
+        const cam = el.filterCamera.value;
+        const sort = el.filterSort.value;
+        const onlyCritical = el.filterOnlyCritical.checked;
+
+        state.filters = { search, camera: cam, sort, onlyCritical };
+
+        let list = state.groups.filter((g) => {
+          if (onlyCritical && !g.isCritical) return false;
+          if (cam !== 'ALL' && g.camera !== cam) return false;
+          if (search) {
+            const matchMeta = g.timestamp.toLowerCase().includes(search) || g.camera.toLowerCase().includes(search);
+            const matchFile = g.photos.some((p) => p.name.toLowerCase().includes(search));
+            if (!matchMeta && !matchFile) return false;
+          }
+          return true;
+        });
+
+        if (sort === 'critical') {
+          list.sort((a, b) => b.excess - a.excess || b.count - a.count || a.timestamp.localeCompare(b.timestamp));
+        } else if (sort === 'count') {
+          list.sort((a, b) => b.count - a.count || a.timestamp.localeCompare(b.timestamp));
+        } else {
+          list.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+        }
+
+        state.filteredGroups = list;
+        const totalPages = Math.max(1, Math.ceil(list.length / state.pageSize));
+        if (state.page > totalPages) state.page = totalPages;
+
+        renderTable();
+      }
+
+      function renderTable() {
+        const list = state.filteredGroups;
+        const totalPages = Math.max(1, Math.ceil(list.length / state.pageSize));
+        const start = (state.page - 1) * state.pageSize;
+        const pageItems = list.slice(start, start + state.pageSize);
+
+        el.tableSummary.textContent = `Mostrando ${formatNumber(list.length)} ${list.length === 1 ? 'grupo' : 'grupos'}`;
+        el.paginationInfo.textContent = `Página ${state.page} de ${totalPages}`;
+        el.btnPrevPage.disabled = state.page <= 1;
+        el.btnNextPage.disabled = state.page >= totalPages;
+
+        if (pageItems.length === 0) {
+          el.tableBody.innerHTML = `
+            <tr>
+              <td colspan="6" class="py-10 px-4 text-center text-sm text-slate-500 dark:text-slate-400">
+                Nenhum segundo encontrado com os filtros atuais.
+              </td>
+            </tr>
+          `;
+          return;
+        }
+
+        const rowsHtml = [];
+        for (const g of pageItems) {
+          const isExpanded = state.expandedKeys.has(g.key);
+          const safeKey = encodeURIComponent(g.key);
+
+          rowsHtml.push(`
+            <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+              <td class="py-3.5 px-4 font-mono text-xs sm:text-sm font-semibold text-slate-900 dark:text-white whitespace-nowrap">
+                ${escapeHtml(g.timestamp)}
+              </td>
+              <td class="py-3.5 px-4 text-xs sm:text-sm text-slate-600 dark:text-slate-300">
+                ${escapeHtml(g.camera)}
+              </td>
+              <td class="py-3.5 px-4 text-center">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${g.isCritical ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400' : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'}">
+                  ${g.count} f/s
+                </span>
+              </td>
+              <td class="py-3.5 px-4 text-center font-bold text-xs sm:text-sm ${g.excess > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400'}">
+                ${g.excess > 0 ? '+' + g.excess : '0'}
+              </td>
+              <td class="py-3.5 px-4 text-center font-semibold text-xs sm:text-sm text-slate-700 dark:text-slate-300">
+                ${g.points}
+              </td>
+              <td class="py-3.5 px-4 text-right whitespace-nowrap">
+                <button type="button" data-toggle-key="${safeKey}" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-300 dark:border-slate-700 hover:bg-indigo-500/10 hover:border-indigo-500/40 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
+                  ${isExpanded ? 'Ocultar' : 'Ver Arquivos'}
+                  <svg class="w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+              </td>
+            </tr>
+          `);
+
+          if (isExpanded) {
+            const thumbsLoaded = state.loadedThumbs.has(g.key);
+            const hasRealFiles = !state.isDemo && g.photos.some((p) => state.fileMap.has(p.id));
+
+            const photoCards = g.photos.map((p, idx) => {
+              const isExcess = idx >= state.config.maxPerSec;
+              let thumbHtml = '';
+              if (thumbsLoaded && state.fileMap.has(p.id)) {
+                let url = state.objectUrls.get(p.id);
+                if (!url) {
+                  url = URL.createObjectURL(state.fileMap.get(p.id));
+                  state.objectUrls.set(p.id, url);
+                }
+                thumbHtml = `<img src="${url}" alt="${escapeHtml(p.name)}" class="w-12 h-12 rounded-lg object-cover border border-slate-200 dark:border-slate-700 shrink-0" loading="lazy" />`;
+              }
+
+              return `
+                <div class="flex items-center justify-between gap-3 p-2.5 rounded-xl border ${isExcess ? 'border-rose-500/30 bg-rose-500/5' : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'}">
+                  <div class="flex items-center gap-2.5 min-w-0">
+                    <span class="text-[11px] font-mono font-bold w-6 text-center text-slate-400">#${idx + 1}</span>
+                    ${thumbHtml}
+                    <div class="min-w-0">
+                      <div class="text-xs font-semibold text-slate-900 dark:text-white truncate" title="${escapeHtml(p.relativePath)}">${escapeHtml(p.name)}</div>
+                      <div class="text-[11px] text-slate-500 dark:text-slate-400">
+                        ${p.subSec ? `.${escapeHtml(p.subSec)}s` : 'sem subseg'} ${p.exifFallback ? '• <span class="text-amber-500 font-medium">Fallback data arquivo</span>' : ''}
+                      </div>
+                    </div>
+                  </div>
+                  <span class="shrink-0 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide ${isExcess ? 'bg-rose-500 text-white' : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'}">
+                    ${isExcess ? 'EXCEDENTE' : 'OK'}
+                  </span>
+                </div>
+              `;
+            }).join('');
+
+            rowsHtml.push(`
+              <tr class="bg-slate-50/70 dark:bg-slate-950/60">
+                <td colspan="6" class="p-4">
+                  <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <span class="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                      ${g.count} fotografias ordenadas por subsegundo (Limite: ${state.config.maxPerSec})
+                    </span>
+                    ${hasRealFiles && !thumbsLoaded ? `
+                      <button type="button" data-load-thumbs="${safeKey}" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        Carregar Miniaturas
+                      </button>
+                    ` : ''}
+                  </div>
+                  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    ${photoCards}
+                  </div>
+                </td>
+              </tr>
+            `);
+          }
+        }
+
+        el.tableBody.innerHTML = rowsHtml.join('');
+      }
+
+      // ---------------------------------------------------------------------
+      // 10. EXPORTAÇÃO (CSV, JSON, .BAT, .SH) E FILE SYSTEM ACCESS API
+      // ---------------------------------------------------------------------
+      function getExcessFiles() {
+        const list = [];
+        for (const g of state.groups) {
+          if (!g.isCritical) continue;
+          for (let i = state.config.maxPerSec; i < g.photos.length; i++) {
+            list.push({
+              ...g.photos[i],
+              groupTimestamp: g.timestamp,
+              groupCamera: g.camera,
+              groupCount: g.count,
+              positionInSec: i + 1,
+            });
+          }
+        }
+        return list;
+      }
+
+      function downloadBlob(content, filename, mimeType) {
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+
+      function exportCsv() {
+        const excess = getExcessFiles();
+        if (excess.length === 0) {
+          showToast('Não há arquivos excedentes para exportar.', 'warning');
+          return;
+        }
+        const header = ['Data_Hora', 'Camera', 'Arquivo', 'Caminho_Relativo', 'Posicao_No_Segundo', 'Total_No_Segundo', 'Subsegundo', 'Fallback_EXIF'];
+        const rows = excess.map((p) => [
+          p.groupTimestamp,
+          `"${(p.groupCamera || '').replace(/"/g, '""')}"`,
+          `"${p.name.replace(/"/g, '""')}"`,
+          `"${p.relativePath.replace(/"/g, '""')}"`,
+          p.positionInSec,
+          p.groupCount,
+          p.subSec || '',
+          p.exifFallback ? 'SIM' : 'NAO',
+        ].join(';'));
+
+        // BOM UTF-8 (\uFEFF) para abrir corretamente no Excel PT-BR
+        const csv = '\uFEFF' + [header.join(';'), ...rows].join('\r\n');
+        downloadBlob(csv, 'burstaudit_excedentes.csv', 'text/csv;charset=utf-8;');
+        showToast('Relatório CSV exportado com sucesso!', 'success');
+      }
+
+      function exportJson() {
+        const excess = getExcessFiles();
+        const report = {
+          geradoEm: new Date().toISOString(),
+          ferramenta: 'BurstAudit',
+          configuracao: state.config,
+          resumo: {
+            totalFotos: state.rawPhotos.length,
+            totalGrupos: state.groups.length,
+            segundosCriticos: state.groups.filter((g) => g.isCritical).length,
+            totalExcedentes: excess.length,
+            pontuacaoTotal: Number((excess.length * state.config.pointsPerExcess).toFixed(2)),
+          },
+          excedentes: excess.map((p) => ({
+            arquivo: p.name,
+            caminhoRelativo: p.relativePath,
+            dataHora: p.groupTimestamp,
+            subsegundo: p.subSec,
+            camera: p.groupCamera,
+            posicaoNoSegundo: p.positionInSec,
+            totalNoSegundo: p.groupCount,
+            exifFallback: p.exifFallback,
+          })),
+        };
+        downloadBlob(JSON.stringify(report, null, 2), 'burstaudit_relatorio.json', 'application/json;charset=utf-8;');
+        showToast('Relatório JSON exportado com sucesso!', 'success');
+      }
+
+      function exportBatScript() {
+        const excess = getExcessFiles();
+        if (excess.length === 0) {
+          showToast('Não há arquivos excedentes para gerar o script .bat.', 'warning');
+          return;
+        }
+
+        const lines = [
+          '@echo off',
+          'chcp 65001 >nul',
+          'setlocal enabledelayedexpansion',
+          '',
+          'echo ====================================================',
+          'echo   BurstAudit - Isolamento de Fotografias Excedentes',
+          'echo ====================================================',
+          'echo.',
+          '',
+          'set "DESTINO=Revisao_Excedentes"',
+          'if not exist "%DESTINO%" mkdir "%DESTINO%"',
+          '',
+          'set /a MOVIDOS=0',
+          'set /a NAO_ENCONTRADOS=0',
+          '',
+        ];
+
+        for (const p of excess) {
+          const safeName = p.name.replace(/%/g, '%%');
+          lines.push(`if exist "${safeName}" (`);
+          lines.push(`  move /Y "${safeName}" "%DESTINO%\\" >nul && set /a MOVIDOS+=1`);
+          lines.push(`) else (`);
+          lines.push(`  set /a NAO_ENCONTRADOS+=1`);
+          lines.push(`)`);
+        }
+
+        lines.push(
+          '',
+          'echo.',
+          'echo Concluido!',
+          'echo Arquivos movidos para "%DESTINO%": !MOVIDOS!',
+          'echo Arquivos nao encontrados nesta pasta: !NAO_ENCONTRADOS!',
+          'echo.',
+          'pause',
+          'endlocal'
+        );
+
+        downloadBlob(lines.join('\r\n'), 'mover_excedentes.bat', 'application/x-bat;charset=utf-8;');
+        showToast('Script mover_excedentes.bat baixado! Execute-o na pasta das fotos.', 'success');
+      }
+
+      function exportShScript() {
+        const excess = getExcessFiles();
+        if (excess.length === 0) {
+          showToast('Não há arquivos excedentes para gerar o script .sh.', 'warning');
+          return;
+        }
+
+        const lines = [
+          '#!/usr/bin/env bash',
+          'set -u',
+          '',
+          'DESTINO="Revisao_Excedentes"',
+          'mkdir -p "$DESTINO"',
+          '',
+          'MOVIDOS=0',
+          'NAO_ENCONTRADOS=0',
+          '',
+        ];
+
+        for (const p of excess) {
+          const safeName = p.name.replace(/"/g, '\\"');
+          lines.push(`if [ -f "${safeName}" ]; then`);
+          lines.push(`  mv -f "${safeName}" "$DESTINO/" && MOVIDOS=$((MOVIDOS + 1))`);
+          lines.push(`else`);
+          lines.push(`  NAO_ENCONTRADOS=$((NAO_ENCONTRADOS + 1))`);
+          lines.push(`fi`);
+        }
+
+        lines.push(
+          '',
+          'echo "Concluido!"',
+          'echo "Arquivos movidos para $DESTINO: $MOVIDOS"',
+          'echo "Arquivos nao encontrados nesta pasta: $NAO_ENCONTRADOS"'
+        );
+
+        downloadBlob(lines.join('\n'), 'mover_excedentes.sh', 'text/x-shellscript;charset=utf-8;');
+        showToast('Script mover_excedentes.sh baixado! Use chmod +x mover_excedentes.sh.', 'success');
+      }
+
+      async function moveDirectlyViaApi() {
+        const excess = getExcessFiles();
+        if (excess.length === 0) {
+          showToast('Não há arquivos excedentes para mover.', 'warning');
+          return;
+        }
+        if (state.isDemo) {
+          showToast('Você está no modo Demonstração. Carregue fotos reais do disco para mover arquivos.', 'warning');
+          return;
+        }
+        if (typeof window.showDirectoryPicker !== 'function') {
+          showToast('Seu navegador não suporta a File System Access API. Use Chrome/Edge ou baixe o script .bat/.sh.', 'warning');
+          return;
+        }
+
+        const confirmed = await openConfirmModal(
+          'Mover Arquivos Diretamente',
+          `Selecione a pasta de origem onde estão as fotos. Os ${formatNumber(excess.length)} arquivos excedentes serão movidos para a subpasta "Revisao_Excedentes".`,
+          'Selecionar Pasta e Mover'
+        );
+        if (!confirmed) return;
+
+        try {
+          const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+          const destHandle = await dirHandle.getDirectoryHandle('Revisao_Excedentes', { create: true });
+
+          // Exibe progresso no modal
+          el.modalTitle.textContent = 'Movendo Arquivos...';
+          el.modalMessage.textContent = 'Por favor, não feche esta aba até a conclusão.';
+          el.modalProgressWrap.classList.remove('hidden');
+          el.modalActions.classList.add('hidden');
+          el.modal.classList.remove('hidden');
+          el.modal.classList.add('flex');
+
+          let moved = 0;
+          let notFound = 0;
+
+          for (let i = 0; i < excess.length; i++) {
+            const p = excess[i];
+            try {
+              const fileHandle = await dirHandle.getFileHandle(p.name);
+              if (typeof fileHandle.move === 'function') {
+                await fileHandle.move(destHandle, p.name);
+              } else {
+                // Fallback seguro: copia para destino e remove da origem
+                const fileData = await fileHandle.getFile();
+                const newHandle = await destHandle.getFileHandle(p.name, { create: true });
+                const writable = await newHandle.createWritable();
+                await writable.write(fileData);
+                await writable.close();
+                await dirHandle.removeEntry(p.name);
+              }
+              moved++;
+            } catch (_) {
+              notFound++;
+            }
+
+            const pct = Math.round(((i + 1) / excess.length) * 100);
+            el.modalProgressLabel.textContent = `Processando ${i + 1} de ${excess.length}...`;
+            el.modalProgressPct.textContent = `${pct}%`;
+            el.modalProgressBar.style.width = `${pct}%`;
+          }
+
+          el.modal.classList.add('hidden');
+          el.modal.classList.remove('flex');
+          showToast(`Concluído! ${moved} movidos para Revisao_Excedentes (${notFound} não encontrados na raiz).`, 'success');
+        } catch (err) {
+          el.modal.classList.add('hidden');
+          el.modal.classList.remove('flex');
+          if (err && err.name !== 'AbortError') {
+            showToast('Não foi possível acessar a pasta selecionada.', 'error');
+          }
+        }
+      }
+
+      // ---------------------------------------------------------------------
+      // 11. EVENT LISTENERS E INICIALIZAÇÃO
+      // ---------------------------------------------------------------------
+      function bindEvents() {
+        initTheme();
+
+        // Botões de Upload
+        el.btnSelectFolder.addEventListener('click', (e) => {
+          e.stopPropagation();
+          el.inputFolder.click();
+        });
+        el.btnSelectFiles.addEventListener('click', (e) => {
+          e.stopPropagation();
+          el.inputFiles.click();
+        });
+        el.dropzone.addEventListener('click', () => el.inputFiles.click());
+
+        el.inputFolder.addEventListener('change', (e) => {
+          const files = Array.from(e.target.files || [])
+            .filter((f) => VALID_EXT.test(f.name))
+            .map((f) => ({ file: f, relativePath: f.webkitRelativePath || f.name }));
+          e.target.value = '';
+          startScan(files);
+        });
+
+        el.inputFiles.addEventListener('change', (e) => {
+          const files = Array.from(e.target.files || [])
+            .filter((f) => VALID_EXT.test(f.name))
+            .map((f) => ({ file: f, relativePath: f.name }));
+          e.target.value = '';
+          startScan(files);
+        });
+
+        // Drag & Drop
+        ['dragenter', 'dragover'].forEach((evt) => {
+          el.dropzone.addEventListener(evt, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            el.dropzone.classList.add('border-indigo-500', 'bg-indigo-50/50', 'dark:bg-indigo-950/30');
+          });
+        });
+        ['dragleave', 'drop'].forEach((evt) => {
+          el.dropzone.addEventListener(evt, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            el.dropzone.classList.remove('border-indigo-500', 'bg-indigo-50/50', 'dark:bg-indigo-950/30');
+          });
+        });
+        el.dropzone.addEventListener('drop', async (e) => {
+          const files = await collectFilesFromDataTransfer(e.dataTransfer);
+          startScan(files);
+        });
+
+        // Cancelar Scan
+        el.btnCancelScan.addEventListener('click', () => {
+          if (state.worker) {
+            state.worker.terminate();
+            URL.revokeObjectURL(state.worker._blobUrl);
+            state.worker = null;
+          }
+          state.isScanning = false;
+          el.progressPanel.classList.add('hidden');
+          showToast('Leitura cancelada pelo usuário.', 'warning');
+        });
+
+        // Limpar Sessão
+        el.btnClearAll.addEventListener('click', (e) => {
+          e.stopPropagation();
+          revokeAllObjectUrls();
+          state.fileMap.clear();
+          state.rawPhotos = [];
+          state.groups = [];
+          state.filteredGroups = [];
+          state.expandedKeys.clear();
+          el.btnClearAll.classList.add('hidden');
+          recalculateAudit();
+          showToast('Sessão limpa.', 'info');
+        });
+
+        // Demonstração
+        el.btnDemo.addEventListener('click', loadDemoData);
+
+        // Configurações reativas
+        [el.cfgMaxPerSec, el.cfgPoints, el.cfgGroupCamera].forEach((input) => {
+          input.addEventListener('input', recalculateAudit);
+          input.addEventListener('change', recalculateAudit);
+        });
+
+        // Filtros da tabela
+        el.filterSearch.addEventListener('input', () => { state.page = 1; applyTableFilters(); });
+        el.filterCamera.addEventListener('change', () => { state.page = 1; applyTableFilters(); });
+        el.filterSort.addEventListener('change', () => { state.page = 1; applyTableFilters(); });
+        el.filterOnlyCritical.addEventListener('change', () => { state.page = 1; applyTableFilters(); });
+
+        // Paginação
+        el.btnPrevPage.addEventListener('click', () => {
+          if (state.page > 1) { state.page--; renderTable(); }
+        });
+        el.btnNextPage.addEventListener('click', () => {
+          const totalPages = Math.max(1, Math.ceil(state.filteredGroups.length / state.pageSize));
+          if (state.page < totalPages) { state.page++; renderTable(); }
+        });
+
+        // Delegação de eventos na tabela (Expandir grupo & Carregar Miniaturas)
+        el.tableBody.addEventListener('click', (e) => {
+          const toggleBtn = e.target.closest('[data-toggle-key]');
+          if (toggleBtn) {
+            const key = decodeURIComponent(toggleBtn.getAttribute('data-toggle-key'));
+            if (state.expandedKeys.has(key)) state.expandedKeys.delete(key);
+            else state.expandedKeys.add(key);
+            renderTable();
+            return;
+          }
+
+          const thumbBtn = e.target.closest('[data-load-thumbs]');
+          if (thumbBtn) {
+            const key = decodeURIComponent(thumbBtn.getAttribute('data-load-thumbs'));
+            state.loadedThumbs.add(key);
+            renderTable();
+          }
+        });
+
+        // Interações do Gráfico (Mouse + Touch + Resize)
+        el.timelineCanvas.addEventListener('mousemove', (e) => handleChartPointer(e.clientX, e.clientY));
+        el.timelineCanvas.addEventListener('mouseleave', () => el.chartTooltip.classList.add('hidden'));
+        el.timelineCanvas.addEventListener('touchstart', (e) => {
+          if (e.touches[0]) handleChartPointer(e.touches[0].clientX, e.touches[0].clientY);
+        }, { passive: true });
+
+        window.addEventListener('resize', () => {
+          if (state.groups.length > 0) drawTimelineChart();
+        });
+
+        // Ações de Exportação
+        el.btnExportCsv.addEventListener('click', exportCsv);
+        el.btnExportJson.addEventListener('click', exportJson);
+        el.btnExportBat.addEventListener('click', exportBatScript);
+        el.btnExportSh.addEventListener('click', exportShScript);
+        el.btnMoveDirect.addEventListener('click', moveDirectlyViaApi);
+      }
+
+      bindEvents();
+    })();
+  </script>
+</body>
+</html>
